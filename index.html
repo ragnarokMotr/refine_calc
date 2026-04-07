@@ -143,6 +143,25 @@
       </table>
       <p class="note">★ — минимальное мат. ожидание</p>
     </div>
+
+    <div class="card" style="margin-top:14px">
+      <h2>Анализ для редкого предмета (нельзя потерять)</h2>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:12px">
+        Сравнение HD (откат −1) vs Благо+Обогащ. (уровень сохраняется) — оба метода не уничтожают предмет.
+        Цена предмета не влияет на выбор между ними.
+      </p>
+      <table>
+        <thead><tr>
+          <th>Переход</th>
+          <th>Шанс HD / Обогащ.</th>
+          <th>МО шага через HD</th>
+          <th>МО шага через Благо+Обогащ.</th>
+          <th>Рекомендация</th>
+        </tr></thead>
+        <tbody id="t-rare"></tbody>
+      </table>
+      <p class="note">МО шага = сколько потратить материалов чтобы поднять уровень (предмет не теряется)</p>
+    </div>
   </div>
 
 </div>
@@ -353,6 +372,57 @@
       tr.innerHTML=`<td>${row.n}${rank}</td><td><strong>${fmt(row.ev)}</strong></td><td style="color:var(--text2);font-size:12px">${row.risk}</td>`;
       cbody.appendChild(tr);
     });
+
+    // ── Анализ для редкого предмета: HD vs Благо+Обогащ ─────────────────────
+    // Оба метода не уничтожают предмет → цена предмета не влияет на выбор.
+    //
+    // МО шага через HD (откат -1, рекурсия по предыдущим шагам):
+    //   hdStep[k] = hd/pn + (1-pn)/pn * hdStep[k-1]
+    //
+    // МО шага через Благо+Обогащ (уровень сохраняется при провале):
+    //   rbStep = (rich + bc×bless) / pr
+    //   Доступно только где bc > 0 (переходы на +8, +9, +10)
+    //
+    // Выбираем меньшее — это и есть ответ для редкого предмета.
+
+    const evHDr = new Array(to+1).fill(0);
+    for(let lvl=finalFrom; lvl<to; lvl++){
+      const pn=pN(type,lvl);
+      evHDr[lvl+1] = pn===1 ? prices.hd : prices.hd/pn + (1-pn)/pn*evHDr[lvl];
+    }
+
+    const tbodyRare=document.getElementById('t-rare');
+    tbodyRare.innerHTML='';
+    for(let lvl=finalFrom; lvl<to; lvl++){
+      const pr=pR(type,lvl), pn=pN(type,lvl), target=lvl+1;
+      const bc=bn(target);
+      if(pr===1 && pn===1) continue;
+
+      const hdStep = evHDr[target];
+      const hdCell = fmt(hdStep);
+
+      let rbCell='—', rec='', recColor='';
+      if(bc>0 && pr>0 && pr<1){
+        const rbStep = (prices.rich + bc*prices.bless) / pr;
+        rbCell = `${fmt(rbStep)} <span style="color:var(--text2);font-size:11px">(×${bc} благо)</span>`;
+        if(hdStep < rbStep){
+          rec='HD дешевле'; recColor='var(--green)';
+        } else {
+          rec='Благо дешевле'; recColor='var(--yellow)';
+        }
+      } else {
+        rec='Только HD (благо недоступно)'; recColor='var(--text2)';
+      }
+
+      const tr=document.createElement('tr');
+      tr.innerHTML=`
+      <td><strong>+${lvl}→+${target}</strong></td>
+      <td>HD: ${(pn*100).toFixed(0)}% / Обогащ: ${(pr*100).toFixed(0)}%</td>
+      <td>${hdCell}</td>
+      <td>${rbCell}</td>
+      <td style="color:${recColor};font-weight:500">${rec}</td>`;
+      tbodyRare.appendChild(tr);
+    }
 
     document.getElementById('results').classList.remove('hidden');
     document.getElementById('results').scrollIntoView({behavior:'smooth',block:'start'});
