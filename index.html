@@ -108,7 +108,7 @@
       <div class="cbg">
         <label><input type="checkbox" id="use-rich">Обогащённые — повышенный шанс, провал = уничтожение предмета</label>
         <label><input type="checkbox" id="use-hd">HD материалы — обычный шанс, провал = откат −1 (не ломает)</label>
-        <label><input type="checkbox" id="use-bless">Благо кузнеца — только с обогащёнными: откат −1 вместо уничтожения, тратится при каждой попытке</label>
+        <label><input type="checkbox" id="use-bless">Благо кузнеца — только с обогащёнными: при провале уровень сохраняется (нет уничтожения), тратится при каждой попытке</label>
       </div>
 
       <div class="sl">Специальный старт (опционально)</div>
@@ -137,7 +137,7 @@
       <table>
         <thead><tr>
           <th>Переход</th><th>Материал</th><th>Шанс</th>
-          <th>Провал</th><th>Цена попытки</th><th>МО шага</th>
+          <th>Провал</th><th>Цена попытки</th><th>МО достижения уровня</th>
         </tr></thead>
         <tbody id="t-steps"></tbody>
       </table>
@@ -179,111 +179,115 @@
 
   // ── Формулы МО ─────────────────────────────────────────────────────────────
   //
-  // Ключевая идея: при уничтожении теряется не базовый предмет,
-  // а предмет со всеми вложенными в него затратами = evReach[k].
-  // evReach[k] = накопленное МО достижения уровня k с нуля (через любой путь).
+  // evReach[k] = МО иметь предмет на уровне k (цена предмета + все затраты на заточку).
   //
-  // Обычный (100%): EV(k) = matCost
+  // Обычный (100%):
+  //   evReach[k+1] = evReach[k] + matCost
   //
-  // Обогащённый без благо, провал = уничтожение:
-  //   При провале теряем evReach[k] (стоимость довести предмет до +k снова).
-  //   EV(k→k+1) = (evReach[k] + matCost) / p   — итого МО достичь k+1
-  //   Шаг затрат: (evReach[k] + matCost) / p - evReach[k]
-  //               = matCost/p + (1-p)/p * evReach[k]
+  // Обогащённый, провал = уничтожение предмета:
+  //   При провале нужно заново достичь уровня k — стоит evReach[k].
+  //   evReach[k+1] = (evReach[k] + richCost) / p
   //
-  // HD (откат -1), провал = нужно повторить шаг k-1→k:
-  //   evHD[k] = МО достичь уровня k через HD начиная с k-1
-  //   evHD[k] = hdCost/p + (1-p)/p * evHD[k-1]  (рекурсия по HD-пути)
+  // HD, провал = откат на -1 (уровень k-1), предмет жив:
+  //   evHD[k] = МО шага k-1→k через HD (только стоимость материалов, предмет не теряется)
+  //   evHD[k] = hdCost/p + (1-p)/p * evHD[k-1]
+  //   evReach[k+1] = evReach[k] + evHD[k+1]
   //
-  // Обогащённый + Благо (провал = откат -1):
-  //   Благо тратится при КАЖДОЙ попытке.
-  //   mc = richCost + blessCount * blessCost  (за одну попытку)
-  //   evRB[k] = mc/p + (1-p)/p * evRB[k-1]
+  // Обогащённый + Благо, провал = уровень НЕ МЕНЯЕТСЯ (ни уничтожения, ни отката):
+  //   Благо тратится при каждой попытке независимо от исхода.
+  //   mc = richCost + blessCount * blessCost  (стоимость одной попытки)
+  //   evReach[k+1] = evReach[k] + mc/p   (просто повторяем пока не выйдет)
 
   function computePath(type, from, to, prices, useRich, useHD, useBless){
     const steps=[];
-
-    // evReach[k] = суммарное МО чтобы довести предмет до уровня k
-    // (учитывает стоимость самого предмета + все шаги)
-    // Инициализируем стоимостью предмета на стартовом уровне
     const evReach = new Array(to+1).fill(0);
     evReach[from] = prices.item;
 
-    // evHD[k] = МО пройти шаг k-1→k через HD (для расчёта отката)
+    // evHD[k] = стоимость материалов для шага k-1→k через HD (рекурсия по откатам)
     const evHD = new Array(to+1).fill(0);
-    // evRB[k] = МО пройти шаг k-1→k через Rich+Bless
-    const evRB = new Array(to+1).fill(0);
 
-    for(let lvl=from;lvl<to;lvl++){
+    for(let lvl=from; lvl<to; lvl++){
       const pr=pR(type,lvl), pn=pN(type,lvl), target=lvl+1;
-      const bc=bn(target);
+      const bc=bn(target); // кол-во благо для этого перехода
       let opts=[];
 
       // ── Обычный (только 100%) ────────────────────────────────────────
       if(pn===1){
-        opts.push({label:'Обычный',tag:'t-n',chance:1,fail:'нет',matCost:prices.norm,
-          ev:prices.norm, evReachNext: evReach[lvl]+prices.norm});
+        opts.push({
+          label:'Обычный', tag:'t-n', chance:1, fail:'нет',
+          matCost:prices.norm,
+          evReachNext: evReach[lvl] + prices.norm
+        });
       }
 
-      // ── Обогащённый без благо ────────────────────────────────────────
-      if(useRich&&pr>0){
+      // ── Обогащённый без благо — провал = уничтожение ─────────────────
+      if(useRich && pr>0){
         if(pr===1){
-          opts.push({label:'Обогащённый',tag:'t-r',chance:1,fail:'нет',matCost:prices.rich,
-            ev:prices.rich, evReachNext: evReach[lvl]+prices.rich});
+          opts.push({
+            label:'Обогащённый', tag:'t-r', chance:1, fail:'нет',
+            matCost:prices.rich,
+            evReachNext: evReach[lvl] + prices.rich
+          });
         } else {
-          // МО достичь target = (evReach[lvl] + matCost) / p
           const evNext = (evReach[lvl] + prices.rich) / pr;
-          const stepCost = evNext - evReach[lvl]; // сколько тратим сверху
-          opts.push({label:'Обогащённый',tag:'t-r',chance:pr,fail:'уничтожение',
-            matCost:prices.rich, ev:stepCost, evReachNext: evNext});
+          opts.push({
+            label:'Обогащённый', tag:'t-r', chance:pr, fail:'уничтожение',
+            matCost:prices.rich,
+            evReachNext: evNext
+          });
         }
       }
 
-      // ── HD без благо (откат -1) ──────────────────────────────────────
+      // ── HD без благо — провал = откат -1 ─────────────────────────────
       if(useHD){
         if(pn===1){
-          opts.push({label:'HD',tag:'t-h',chance:1,fail:'нет',matCost:prices.hd,
-            ev:prices.hd, evReachNext: evReach[lvl]+prices.hd});
-          evHD[target]=prices.hd;
+          evHD[target] = prices.hd;
+          opts.push({
+            label:'HD', tag:'t-h', chance:1, fail:'нет',
+            matCost:prices.hd,
+            evReachNext: evReach[lvl] + prices.hd
+          });
         } else {
-          // evHD[target] = МО пройти lvl→target через HD
-          // При откате возвращаемся на lvl, платим evHD[lvl] чтобы вернуться на lvl+1
           const hdStep = prices.hd/pn + (1-pn)/pn * evHD[lvl];
-          evHD[target]=hdStep;
-          opts.push({label:'HD',tag:'t-h',chance:pn,fail:'откат −1',
-            matCost:prices.hd, ev:hdStep, evReachNext: evReach[lvl]+hdStep});
+          evHD[target] = hdStep;
+          opts.push({
+            label:'HD', tag:'t-h', chance:pn, fail:'откат −1',
+            matCost:prices.hd,
+            evReachNext: evReach[lvl] + hdStep
+          });
         }
       }
 
-      // ── Обогащённый + Благо (откат -1) ──────────────────────────────
-      if(useRich&&useBless&&pr>0&&pr<1){
-        const mc = prices.rich + bc*prices.bless; // платим за каждую попытку
-        const rbStep = mc/pr + (1-pr)/pr * evRB[lvl];
-        evRB[target]=rbStep;
-        const lbl = bc>0 ? `Обогащ.+Благо×${bc}` : 'Обогащённый';
-        opts.push({label:lbl,tag:'t-b',chance:pr,fail:'откат −1',
-          matCost:mc, ev:rbStep, evReachNext: evReach[lvl]+rbStep});
+      // ── Обогащённый + Благо — провал = уровень остаётся как есть ─────
+      // Благо тратится при каждой попытке. Нет ни уничтожения, ни отката.
+      // МО = mc/p — просто E[попыток] * цена попытки.
+      // ТОЛЬКО если для этого перехода нужно благо (bc > 0) И шанс < 100%
+      if(useRich && useBless && pr>0 && pr<1 && bc>0){
+        const mc = prices.rich + bc*prices.bless;
+        const rbStep = mc / pr;
+        opts.push({
+          label:`Благо×${bc} + Обогащ.`, tag:'t-b', chance:pr, fail:'уровень сохраняется',
+          matCost:prices.rich, blessCost:bc*prices.bless, blessCount:bc,
+          evReachNext: evReach[lvl] + rbStep
+        });
       }
 
-      // ── Fallback ─────────────────────────────────────────────────────
-      if(opts.length===0&&pn>0){
+      // ── Fallback — обычный с уничтожением ────────────────────────────
+      if(opts.length===0 && pn>0){
         if(pn===1){
           opts.push({label:'Обычный',tag:'t-n',chance:1,fail:'нет',matCost:prices.norm,
-            ev:prices.norm, evReachNext:evReach[lvl]+prices.norm});
+            evReachNext:evReach[lvl]+prices.norm});
         } else {
-          const evNext=(evReach[lvl]+prices.norm)/pn;
-          opts.push({label:'Обычный',tag:'t-n',chance:pn,fail:'уничтожение',
-            matCost:prices.norm, ev:evNext-evReach[lvl], evReachNext:evNext});
+          opts.push({label:'Обычный',tag:'t-n',chance:pn,fail:'уничтожение',matCost:prices.norm,
+            evReachNext:(evReach[lvl]+prices.norm)/pn});
         }
       }
 
-      const best=opts.reduce((a,b)=>a.ev<=b.ev?a:b);
-      steps.push({from:lvl,to:target,...best});
-      evReach[target]=best.evReachNext;
+      const best = opts.reduce((a,b) => a.evReachNext <= b.evReachNext ? a : b);
+      steps.push({from:lvl, to:target, ...best});
+      evReach[target] = best.evReachNext;
 
-      // Заполняем hdRet/rbRet если стратегия не была выбрана
-      if(!evHD[target]) evHD[target]=best.ev;
-      if(!evRB[target]) evRB[target]=best.ev;
+      if(!evHD[target]) evHD[target] = best.evReachNext - evReach[lvl];
     }
     return steps;
   }
@@ -330,9 +334,16 @@
 
     const finalFrom=Math.min(effectiveFrom,to);
     const steps=finalFrom<to?computePath(type,finalFrom,to,prices,useRich,useHD,useBless):[];
-    const pathEV=steps.reduce((a,s)=>a+s.ev,0);
-    const total=preEV+pathEV;
+
+    // evReachNext последнего шага включает prices.item (заложено в evReach[finalFrom] внутри computePath)
+    // total = цена предмета + спецстарт (аппарат/ларцы) + затраты на заточку
+    const finalEvReach = steps.length>0 ? steps[steps.length-1].evReachNext : prices.item;
+    const total = preEV + finalEvReach; // finalEvReach уже включает prices.item внутри
+
+    // Ожид. попыток — сумма 1/p по всем шагам
     const avgAtt=steps.reduce((a,s)=>a+(s.chance<1?1/s.chance:1),0);
+    // Ожид. предметов потраченных (включая стартовый) — только для шагов с уничтожением
+    // На шаге с уничтожением: E[попыток]=1/p, E[провалов]=(1-p)/p
     const avgItems=1+steps.filter(s=>s.fail==='уничтожение').reduce((a,s)=>a+(1-s.chance)/s.chance,0);
 
     document.getElementById('r-total').textContent=fmt(total);
@@ -349,32 +360,45 @@
     });
     steps.forEach(s=>{
       const tr=document.createElement('tr');
-      tr.innerHTML=`<td><strong>+${s.from}→+${s.to}</strong></td><td><span class="tag ${s.tag}">${s.label}</span></td><td>${(s.chance*100).toFixed(0)}%</td><td style="color:var(--text2)">${s.fail}</td><td style="color:var(--text2)">${fmt(s.matCost)}</td><td><strong>${fmt(s.ev)}</strong></td>`;
+      // Цена попытки: если есть благо — показываем rich + bless отдельно
+      const costCell = s.blessCount>0
+        ? `${fmt(s.matCost)} + ${fmt(s.blessCost)} благо`
+        : fmt(s.matCost);
+      tr.innerHTML=`<td><strong>+${s.from}→+${s.to}</strong></td><td><span class="tag ${s.tag}">${s.label}</span></td><td>${(s.chance*100).toFixed(0)}%</td><td style="color:var(--text2)">${s.fail}</td><td style="color:var(--text2)">${costCell}</td><td><strong>${fmt(s.evReachNext)}</strong></td>`;
       tbody.appendChild(tr);
     });
 
     const strats=[
-      {n:'Только обычные',         r:false,h:false,b:false,risk:'нет риска при 100%, иначе уничтожение'},
-      {n:'Обогащённые',            r:true, h:false,b:false,risk:'уничтожение предмета при провале'},
-      {n:'HD',                     r:false,h:true, b:false,risk:'откат −1, без уничтожения'},
-      {n:'Обогащённые + Благо',    r:true, h:false,b:true, risk:'откат −1, без уничтожения'},
-      {n:'Обогащ.+HD (авто)',      r:true, h:true, b:false,risk:'автовыбор на каждом шаге'},
-      {n:'Обогащ.+HD+Благо (авто)',r:true, h:true, b:true, risk:'автовыбор + страховка'},
+      {n:'Обогащённые',           r:true, h:false,b:false,
+        risk:'провал = уничтожение предмета'},
+      {n:'Обогащённые + Благо',   r:true, h:false,b:true,
+        risk:'провал = уровень сохраняется, тратится материал + благо'},
+      {n:'HD',                    r:false,h:true, b:false,
+        risk:'провал = откат −1, предмет не теряется'},
+      {n:'Обогащённые или HD (авто)',r:true,h:true,b:false,
+        risk:'лучший материал на каждом шаге без благо'},
+      {n:'Обогащённые/Благо (авто)',r:true,h:false,b:true,
+        risk:'на каждом шаге: обогащённый vs обогащённый+благо'},
     ];
     let minEV=Infinity;
     const cmpRows=strats.map(st=>{
-      let ev=preEV;
-      if(finalFrom<to){const ss=computePath(type,finalFrom,to,prices,st.r,st.h,st.b);ev+=ss.reduce((a,s)=>a+s.ev,0);}
+      let stratEvReach=prices.item;
+      if(finalFrom<to){
+        const ss=computePath(type,finalFrom,to,prices,st.r,st.h,st.b);
+        if(ss.length>0) stratEvReach=ss[ss.length-1].evReachNext;
+      }
+      const ev=preEV+stratEvReach;
       if(ev<minEV)minEV=ev;
-      return{n:st.n,ev,risk:st.risk};
+      return{n:st.n, ev, risk:st.risk};
     });
     cmpRows.sort((a,b)=>a.ev-b.ev);
     const cbody=document.getElementById('t-cmp');
     cbody.innerHTML='';
-    cmpRows.forEach(row=>{
+    cmpRows.forEach((row,i)=>{
       const tr=document.createElement('tr');
       if(row.ev===minEV)tr.className='best';
-      tr.innerHTML=`<td>${row.n}${row.ev===minEV?' <span style="color:var(--green)">★</span>':''}</td><td><strong>${fmt(row.ev)}</strong></td><td style="color:var(--text2);font-size:12px">${row.risk}</td>`;
+      const rank = i===0 ? ' <span style="color:var(--green)">★ дешевле всего</span>' : '';
+      tr.innerHTML=`<td>${row.n}${rank}</td><td><strong>${fmt(row.ev)}</strong></td><td style="color:var(--text2);font-size:12px">${row.risk}</td>`;
       cbody.appendChild(tr);
     });
 
