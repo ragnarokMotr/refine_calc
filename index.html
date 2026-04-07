@@ -67,7 +67,7 @@
   <header>
     <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:4px">
       <h1>Калькулятор заточки — Ragnarok Online (MOTR)</h1>
-      <span style="font-size:11px;font-weight:600;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 7px;flex-shrink:0">v 0.1.5</span>
+      <span style="font-size:11px;font-weight:600;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 7px;flex-shrink:0">v 0.1.6</span>
     </div>
     <p>Мат. ожидание стоимости заточки. Обычные · Обогащённые · HD · Благо кузнеца</p>
   </header>
@@ -388,8 +388,9 @@
     //
     // Выбираем меньшее — это и есть ответ для редкого предмета.
 
+    // evHDr считаем всегда с 0 — рекурсия отката требует полной истории шагов
     const evHDr = new Array(to+1).fill(0);
-    for(let lvl=finalFrom; lvl<to; lvl++){
+    for(let lvl=0; lvl<to; lvl++){
       const pn=pN(type,lvl);
       evHDr[lvl+1] = pn===1 ? prices.hd : prices.hd/pn + (1-pn)/pn*evHDr[lvl];
     }
