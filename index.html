@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Калькулятор заточки — Ragnarok Online (MOTR)</title>
+  <style>
+    :root{
+      --bg:#0f1117;--bg2:#181c27;--bg3:#1f2535;
+      --border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.15);
+      --text:#e8ecf4;--text2:#7a85a0;
+      --accent:#4a7cff;--accent2:#2d56d4;
+      --green:#2ecc7a;--yellow:#f0a830;
+      --radius:10px;--radius-s:6px;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;line-height:1.5;min-height:100vh}
+    .page{max-width:1000px;margin:0 auto;padding:2rem 1.25rem 5rem}
+    header{padding-bottom:1.25rem;margin-bottom:2rem;border-bottom:1px solid var(--border)}
+    header h1{font-size:21px;font-weight:600;margin-bottom:4px}
+    header p{font-size:13px;color:var(--text2)}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+    @media(max-width:660px){.grid2{grid-template-columns:1fr}}
+    .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem}
+    .card h2{font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:14px}
+    .field{margin-bottom:11px}
+    .field label{display:block;font-size:13px;color:var(--text2);margin-bottom:5px}
+    .field input,.field select{width:100%;padding:7px 10px;font-size:14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-s);color:var(--text);transition:border-color .15s}
+    .field input:focus,.field select:focus{outline:none;border-color:var(--accent)}
+    .rg{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+    .rg label{display:flex;align-items:center;gap:5px;padding:5px 10px;font-size:13px;cursor:pointer;border:1px solid var(--border);border-radius:var(--radius-s);background:var(--bg3);color:var(--text2);transition:all .15s;user-select:none}
+    .rg label.sel{border-color:var(--accent);background:rgba(74,124,255,.13);color:var(--text)}
+    .rg input{display:none}
+    .cbg{display:flex;flex-direction:column;gap:9px;margin-bottom:12px}
+    .cbg label{display:flex;align-items:flex-start;gap:8px;font-size:13px;cursor:pointer;color:var(--text2);user-select:none;transition:color .1s}
+    .cbg label.sel{color:var(--text)}
+    .cbg input{margin-top:3px;accent-color:var(--accent);flex-shrink:0}
+    .sl{font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.07em;margin:14px 0 8px}
+    .hint{font-size:12px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-s);padding:8px 10px;margin-top:10px;line-height:1.6}
+    .btn{width:100%;padding:12px;font-size:15px;font-weight:700;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;transition:background .15s;margin-bottom:2rem}
+    .btn:hover{background:var(--accent2)}
+    .hidden{display:none}
+    .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:1.25rem}
+    @media(max-width:500px){.metrics{grid-template-columns:1fr 1fr}}
+    .metric{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:.9rem 1rem}
+    .metric .lbl{font-size:12px;color:var(--text2);margin-bottom:5px}
+    .metric .val{font-size:22px;font-weight:700}
+    .metric .val.g{color:var(--green)}
+    .metric .val.y{color:var(--yellow)}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th{text-align:left;padding:8px 10px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border)}
+    td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle}
+    tr:last-child td{border-bottom:none}
+    tr.best td{color:var(--green)}
+    .tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px}
+    .t-n{background:rgba(46,204,122,.12);color:#2ecc7a}
+    .t-r{background:rgba(74,124,255,.12);color:#4a7cff}
+    .t-h{background:rgba(240,168,48,.12);color:#f0a830}
+    .t-b{background:rgba(155,116,232,.12);color:#9b74e8}
+    .note{font-size:12px;color:var(--text2);margin-top:10px}
+    .pre-row td{color:var(--text2);font-style:italic}
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <h1>Калькулятор заточки — Ragnarok Online (MOTR)</h1>
+    <p>Мат. ожидание стоимости заточки. Обычные · Обогащённые · HD · Благо кузнеца · Ларцы · Аппарат</p>
+  </header>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Предмет и цены рынка</h2>
+      <div class="sl">Тип предмета</div>
+      <div class="rg" id="type-rg">
+        <label><input type="radio" name="itype" value="armor" checked>Броня</label>
+        <label><input type="radio" name="itype" value="w4">Оружие ур.4</label>
+        <label><input type="radio" name="itype" value="w3">Оружие ур.3</label>
+        <label><input type="radio" name="itype" value="w2">Оружие ур.2</label>
+        <label><input type="radio" name="itype" value="w1">Оружие ур.1</label>
+      </div>
+      <div class="field"><label>Стоимость предмета (Z)</label><input type="number" id="p-item" value="2000000" min="0"></div>
+      <div class="field"><label>Обычный материал — элуниум / оридекон (Z)</label><input type="number" id="p-norm" value="12000" min="0"></div>
+      <div class="field"><label>Обогащённый материал (Z)</label><input type="number" id="p-rich" value="130000" min="0"></div>
+      <div class="field"><label>HD материал (Z)</label><input type="number" id="p-hd" value="1000000" min="0"></div>
+      <div class="field"><label>Благословение кузнеца (Z)</label><input type="number" id="p-bless" value="28000000" min="0"></div>
+    </div>
+
+    <div class="card">
+      <h2>Параметры заточки</h2>
+      <div class="field"><label>Текущий уровень заточки</label>
+        <select id="from-lvl">
+          <option value="0">+0</option><option value="1">+1</option><option value="2">+2</option>
+          <option value="3">+3</option><option value="4">+4</option><option value="5">+5</option>
+          <option value="6">+6</option><option value="7">+7</option><option value="8">+8</option>
+          <option value="9">+9</option>
+        </select>
+      </div>
+      <div class="field"><label>Целевой уровень заточки</label>
+        <select id="to-lvl">
+          <option value="5">+5</option><option value="6">+6</option><option value="7">+7</option>
+          <option value="8">+8</option><option value="9" selected>+9</option><option value="10">+10</option>
+        </select>
+      </div>
+
+      <div class="sl">Доступные материалы</div>
+      <div class="cbg">
+        <label><input type="checkbox" id="use-rich">Обогащённые — повышенный шанс, провал = уничтожение предмета</label>
+        <label><input type="checkbox" id="use-hd">HD материалы — обычный шанс, провал = откат −1 (не ломает)</label>
+        <label><input type="checkbox" id="use-bless">Благо кузнеца — страховка от поломки/отката, тратится при любом исходе</label>
+      </div>
+
+      <div class="sl">Специальный старт (опционально)</div>
+      <div class="cbg">
+        <label><input type="checkbox" id="use-app">Аппарат заточки — гарантированный +7</label>
+        <label><input type="checkbox" id="use-larec">Ларец Иллюзий — 25% на +7 / +8 / +9 / +10</label>
+      </div>
+      <div class="field hidden" id="f-app"><label>Цена аппарата (Z)</label><input type="number" id="p-app" value="7500000" min="0"></div>
+      <div class="field hidden" id="f-larec"><label>Цена ларца (Z)</label><input type="number" id="p-larec" value="30000000" min="0"></div>
+
+      <div class="hint">На каждом шаге выбирается материал с <strong>минимальным мат. ожиданием</strong> из отмеченных выше.</div>
+    </div>
+  </div>
+
+  <button class="btn" onclick="calculate()">Рассчитать мат. ожидание →</button>
+
+  <div id="results" class="hidden">
+    <div class="metrics">
+      <div class="metric"><div class="lbl">Мат. ожидание (итого)</div><div class="val g" id="r-total">—</div></div>
+      <div class="metric"><div class="lbl">Ожид. попыток</div><div class="val y" id="r-att">—</div></div>
+      <div class="metric"><div class="lbl">Ожид. предметов</div><div class="val" id="r-items">—</div></div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <h2>Оптимальный пошаговый план</h2>
+      <table>
+        <thead><tr>
+          <th>Переход</th><th>Материал</th><th>Шанс</th>
+          <th>Провал</th><th>Цена попытки</th><th>МО шага</th>
+        </tr></thead>
+        <tbody id="t-steps"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Сравнение всех стратегий</h2>
+      <table>
+        <thead><tr><th>Стратегия</th><th>МО затрат</th><th>Риск</th></tr></thead>
+        <tbody id="t-cmp"></tbody>
+      </table>
+      <p class="note">★ — минимальное мат. ожидание</p>
+    </div>
+  </div>
+
+</div>
+<script>
+  const RICH={
+    armor:[1,1,1,1,0.90,0.70,0.70,0.40,0.40,0.20],
+    w1:   [1,1,1,1,1.00,1.00,1.00,0.90,0.70,0.30],
+    w2:   [1,1,1,1,1.00,1.00,0.90,0.70,0.40,0.40],
+    w3:   [1,1,1,1,1.00,0.90,0.80,0.40,0.40,0.30],
+    w4:   [1,1,1,1,0.90,0.70,0.70,0.40,0.40,0.20],
+  };
+  const NORM={
+    armor:[1,1,1,1,0.60,0.40,0.40,0.20,0.20,0.09],
+    w1:   [1,1,1,1,1.00,1.00,1.00,0.60,0.40,0.19],
+    w2:   [1,1,1,1,1.00,1.00,0.60,0.40,0.20,0.19],
+    w3:   [1,1,1,1,1.00,0.60,0.50,0.20,0.20,0.19],
+    w4:   [1,1,1,1,0.60,0.40,0.40,0.20,0.20,0.09],
+  };
+  // кол-во благо для перехода НА уровень (ключ = целевой уровень)
+  const BLESS_N={8:1,9:2,10:4};
+
+  function pR(t,l){return(RICH[t]||RICH.armor)[l]||0}
+  function pN(t,l){return(NORM[t]||NORM.armor)[l]||0}
+  function bn(tgt){return BLESS_N[tgt]||0}
+  function fmt(n){return Math.round(n).toLocaleString('ru-RU')+' Z'}
+
+  // ── Формулы МО ─────────────────────────────────────────────────────────────
+  //
+  // Обычный/Обогащённый без благо, провал = уничтожение:
+  //   EV = matCost/p + (1-p)/p * itemCost
+  //
+  // HD (откат -1), провал = нужно повторить шаг lvl-1→lvl:
+  //   EV(k) = (hdCost + (1-p)*evReturn[k]) / p
+  //   evReturn[k] — стоимость заново подняться с k-1 до k
+  //
+  // Обогащённый + Благо (откат -1):
+  //   matCost = richCost + blessCount*blessCost
+  //   EV(k) = (matCost + (1-p)*evReturn[k]) / p
+  //
+  // HD + Благо (провал = ничего):
+  //   EV(k) = (hdCost + blessCount*blessCost) / p
+
+  function computePath(type, from, to, prices, useRich, useHD, useBless){
+    const steps=[];
+    const evReturn=new Array(to+1).fill(0); // evReturn[k] = МО шага k-1→k
+
+    for(let lvl=from;lvl<to;lvl++){
+      const pr=pR(type,lvl), pn=pN(type,lvl), target=lvl+1;
+      let opts=[];
+
+      // Обычный — только если 100%
+      if(pn===1) opts.push({label:'Обычный',tag:'t-n',chance:1,fail:'нет',matCost:prices.norm,ev:prices.norm});
+
+      // Обогащённый без благо
+      if(useRich&&pr>0){
+        if(pr===1) opts.push({label:'Обогащённый',tag:'t-r',chance:1,fail:'нет',matCost:prices.rich,ev:prices.rich});
+        else{
+          const ev=prices.rich/pr+(1-pr)/pr*prices.item;
+          opts.push({label:'Обогащённый',tag:'t-r',chance:pr,fail:'уничтожение',matCost:prices.rich,ev});
+        }
+      }
+
+      // HD без благо
+      if(useHD){
+        if(pn===1) opts.push({label:'HD',tag:'t-h',chance:1,fail:'нет',matCost:prices.hd,ev:prices.hd});
+        else{
+          const ev=(prices.hd+(1-pn)*evReturn[lvl])/pn;
+          opts.push({label:'HD',tag:'t-h',chance:pn,fail:'откат −1',matCost:prices.hd,ev});
+        }
+      }
+
+      // Обогащённый + Благо
+      if(useRich&&useBless&&pr>0&&pr<1){
+        const bc=bn(target), mc=prices.rich+bc*prices.bless;
+        const ev=(mc+(1-pr)*evReturn[lvl])/pr;
+        opts.push({label:bc?`Обогащ.+Благо×${bc}`:'Обогащённый',tag:'t-b',chance:pr,fail:'откат −1',matCost:mc,ev});
+      }
+
+      // HD + Благо
+      if(useHD&&useBless&&pn<1){
+        const bc=bn(target), mc=prices.hd+bc*prices.bless;
+        const ev=mc/pn;
+        opts.push({label:bc?`HD+Благо×${bc}`:'HD',tag:'t-b',chance:pn,fail:'нет эффекта',matCost:mc,ev});
+      }
+
+      // Fallback — обычный с уничтожением
+      if(opts.length===0&&pn>0){
+        const ev=pn===1?prices.norm:prices.norm/pn+(1-pn)/pn*prices.item;
+        opts.push({label:'Обычный',tag:'t-n',chance:pn,fail:pn<1?'уничтожение':'нет',matCost:prices.norm,ev});
+      }
+
+      const best=opts.reduce((a,b)=>a.ev<=b.ev?a:b);
+      steps.push({from:lvl,to:target,...best});
+      evReturn[target]=best.ev;
+    }
+    return steps;
+  }
+
+  function calculate(){
+    const type=document.querySelector('input[name=itype]:checked').value;
+    const from=parseInt(document.getElementById('from-lvl').value);
+    const to=parseInt(document.getElementById('to-lvl').value);
+    if(from>=to){alert('Текущий уровень должен быть ниже целевого');return;}
+
+    const prices={
+      item: +document.getElementById('p-item').value||0,
+      norm: +document.getElementById('p-norm').value||0,
+      rich: +document.getElementById('p-rich').value||0,
+      hd:   +document.getElementById('p-hd').value||0,
+      bless:+document.getElementById('p-bless').value||0,
+    };
+    const useRich =document.getElementById('use-rich').checked;
+    const useHD   =document.getElementById('use-hd').checked;
+    const useBless=document.getElementById('use-bless').checked;
+    const useApp  =document.getElementById('use-app').checked;
+    const useLarec=document.getElementById('use-larec').checked;
+
+    let preEV=0, preRows=[], effectiveFrom=from;
+
+    if(useApp&&from<7){
+      const pApp=+document.getElementById('p-app').value||7500000;
+      preEV+=pApp;
+      preRows.push({label:'Аппарат → гарантированный +7',cost:fmt(pApp)});
+      effectiveFrom=Math.max(effectiveFrom,7);
+    }
+    if(useLarec){
+      const pLarec=+document.getElementById('p-larec').value||30000000;
+      const needMin=Math.max(effectiveFrom,7);
+      if(needMin<=10&&to>needMin){
+        const p=Math.min(1,(10-needMin+1)*0.25);
+        const evL=pLarec/p;
+        const expLvl=(needMin+10)/2;
+        preEV+=evL;
+        preRows.push({label:`Ларцы → ожид. +${expLvl.toFixed(1)} (P=${(p*100).toFixed(0)}% за ларец)`,cost:fmt(evL)});
+        effectiveFrom=Math.min(Math.round(expLvl),to);
+      }
+    }
+
+    const finalFrom=Math.min(effectiveFrom,to);
+    const steps=finalFrom<to?computePath(type,finalFrom,to,prices,useRich,useHD,useBless):[];
+    const pathEV=steps.reduce((a,s)=>a+s.ev,0);
+    const total=preEV+pathEV;
+    const avgAtt=steps.reduce((a,s)=>a+(s.chance<1?1/s.chance:1),0);
+    const avgItems=1+steps.filter(s=>s.fail==='уничтожение').reduce((a,s)=>a+(1-s.chance)/s.chance,0);
+
+    document.getElementById('r-total').textContent=fmt(total);
+    document.getElementById('r-att').textContent=avgAtt.toFixed(1);
+    document.getElementById('r-items').textContent=avgItems.toFixed(2);
+
+    const tbody=document.getElementById('t-steps');
+    tbody.innerHTML='';
+    preRows.forEach(r=>{
+      const tr=document.createElement('tr');
+      tr.className='pre-row';
+      tr.innerHTML=`<td>+${from}→+${finalFrom}</td><td colspan="4">${r.label}</td><td>${r.cost}</td>`;
+      tbody.appendChild(tr);
+    });
+    steps.forEach(s=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td><strong>+${s.from}→+${s.to}</strong></td><td><span class="tag ${s.tag}">${s.label}</span></td><td>${(s.chance*100).toFixed(0)}%</td><td style="color:var(--text2)">${s.fail}</td><td style="color:var(--text2)">${fmt(s.matCost)}</td><td><strong>${fmt(s.ev)}</strong></td>`;
+      tbody.appendChild(tr);
+    });
+
+    const strats=[
+      {n:'Только обычные',        r:false,h:false,b:false,risk:'нет риска при 100%, иначе уничтожение'},
+      {n:'Обогащённые',           r:true, h:false,b:false,risk:'уничтожение предмета при провале'},
+      {n:'HD',                    r:false,h:true, b:false,risk:'откат −1, без уничтожения'},
+      {n:'Обогащённые + Благо',   r:true, h:false,b:true, risk:'откат −1, без уничтожения'},
+      {n:'HD + Благо',            r:false,h:true, b:true, risk:'нет эффекта при провале'},
+      {n:'Обогащ.+HD+Благо (авто)',r:true,h:true, b:true, risk:'автовыбор лучшего на каждом шаге'},
+    ];
+    let minEV=Infinity;
+    const cmpRows=strats.map(st=>{
+      let ev=preEV;
+      if(finalFrom<to){const ss=computePath(type,finalFrom,to,prices,st.r,st.h,st.b);ev+=ss.reduce((a,s)=>a+s.ev,0);}
+      if(ev<minEV)minEV=ev;
+      return{n:st.n,ev,risk:st.risk};
+    });
+    cmpRows.sort((a,b)=>a.ev-b.ev);
+    const cbody=document.getElementById('t-cmp');
+    cbody.innerHTML='';
+    cmpRows.forEach(row=>{
+      const tr=document.createElement('tr');
+      if(row.ev===minEV)tr.className='best';
+      tr.innerHTML=`<td>${row.n}${row.ev===minEV?' <span style="color:var(--green)">★</span>':''}</td><td><strong>${fmt(row.ev)}</strong></td><td style="color:var(--text2);font-size:12px">${row.risk}</td>`;
+      cbody.appendChild(tr);
+    });
+
+    document.getElementById('results').classList.remove('hidden');
+    document.getElementById('results').scrollIntoView({behavior:'smooth',block:'start'});
+  }
+
+  // UI sync
+  document.querySelectorAll('.rg input').forEach(inp=>{
+    const sync=()=>document.querySelectorAll('.rg label').forEach(l=>l.classList.toggle('sel',l.querySelector('input').checked));
+    inp.addEventListener('change',sync);sync();
+  });
+  document.querySelectorAll('.cbg input').forEach(inp=>{
+    inp.addEventListener('change',()=>inp.closest('label').classList.toggle('sel',inp.checked));
+  });
+  document.getElementById('use-app').addEventListener('change',function(){document.getElementById('f-app').classList.toggle('hidden',!this.checked)});
+  document.getElementById('use-larec').addEventListener('change',function(){document.getElementById('f-larec').classList.toggle('hidden',!this.checked)});
+</script>
+</body>
+</html>
