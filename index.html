@@ -111,14 +111,6 @@
         <label><input type="checkbox" id="use-bless">Благо кузнеца — только с обогащёнными: при провале уровень сохраняется (нет уничтожения), тратится при каждой попытке</label>
       </div>
 
-      <div class="sl">Специальный старт (опционально)</div>
-      <div class="cbg">
-        <label><input type="checkbox" id="use-app">Аппарат заточки — гарантированный +7</label>
-        <label><input type="checkbox" id="use-larec">Ларец Иллюзий — 25% на +7 / +8 / +9 / +10</label>
-      </div>
-      <div class="field hidden" id="f-app"><label>Цена аппарата (Z)</label><input type="number" id="p-app" value="7500000" min="0"></div>
-      <div class="field hidden" id="f-larec"><label>Цена ларца (Z)</label><input type="number" id="p-larec" value="30000000" min="0"></div>
-
       <div class="hint">На каждом шаге выбирается материал с <strong>минимальным мат. ожиданием</strong> из отмеченных выше.</div>
     </div>
   </div>
@@ -308,42 +300,14 @@
     const useRich =document.getElementById('use-rich').checked;
     const useHD   =document.getElementById('use-hd').checked;
     const useBless=document.getElementById('use-bless').checked;
-    const useApp  =document.getElementById('use-app').checked;
-    const useLarec=document.getElementById('use-larec').checked;
 
-    let preEV=0, preRows=[], effectiveFrom=from;
-
-    if(useApp&&from<7){
-      const pApp=+document.getElementById('p-app').value||7500000;
-      preEV+=pApp;
-      preRows.push({label:'Аппарат → гарантированный +7',cost:fmt(pApp)});
-      effectiveFrom=Math.max(effectiveFrom,7);
-    }
-    if(useLarec){
-      const pLarec=+document.getElementById('p-larec').value||30000000;
-      const needMin=Math.max(effectiveFrom,7);
-      if(needMin<=10&&to>needMin){
-        const p=Math.min(1,(10-needMin+1)*0.25);
-        const evL=pLarec/p;
-        const expLvl=(needMin+10)/2;
-        preEV+=evL;
-        preRows.push({label:`Ларцы → ожид. +${expLvl.toFixed(1)} (P=${(p*100).toFixed(0)}% за ларец)`,cost:fmt(evL)});
-        effectiveFrom=Math.min(Math.round(expLvl),to);
-      }
-    }
-
-    const finalFrom=Math.min(effectiveFrom,to);
+    const finalFrom=Math.min(from,to);
     const steps=finalFrom<to?computePath(type,finalFrom,to,prices,useRich,useHD,useBless):[];
 
-    // evReachNext последнего шага включает prices.item (заложено в evReach[finalFrom] внутри computePath)
-    // total = цена предмета + спецстарт (аппарат/ларцы) + затраты на заточку
     const finalEvReach = steps.length>0 ? steps[steps.length-1].evReachNext : prices.item;
-    const total = preEV + finalEvReach; // finalEvReach уже включает prices.item внутри
+    const total = finalEvReach;
 
-    // Ожид. попыток — сумма 1/p по всем шагам
     const avgAtt=steps.reduce((a,s)=>a+(s.chance<1?1/s.chance:1),0);
-    // Ожид. предметов потраченных (включая стартовый) — только для шагов с уничтожением
-    // На шаге с уничтожением: E[попыток]=1/p, E[провалов]=(1-p)/p
     const avgItems=1+steps.filter(s=>s.fail==='уничтожение').reduce((a,s)=>a+(1-s.chance)/s.chance,0);
 
     document.getElementById('r-total').textContent=fmt(total);
@@ -352,15 +316,8 @@
 
     const tbody=document.getElementById('t-steps');
     tbody.innerHTML='';
-    preRows.forEach(r=>{
-      const tr=document.createElement('tr');
-      tr.className='pre-row';
-      tr.innerHTML=`<td>+${from}→+${finalFrom}</td><td colspan="4">${r.label}</td><td>${r.cost}</td>`;
-      tbody.appendChild(tr);
-    });
     steps.forEach(s=>{
       const tr=document.createElement('tr');
-      // Цена попытки: если есть благо — показываем rich + bless отдельно
       const costCell = s.blessCount>0
         ? `${fmt(s.matCost)} + ${fmt(s.blessCost)} благо`
         : fmt(s.matCost);
@@ -369,16 +326,11 @@
     });
 
     const strats=[
-      {n:'Обогащённые',           r:true, h:false,b:false,
-        risk:'провал = уничтожение предмета'},
-      {n:'Обогащённые + Благо',   r:true, h:false,b:true,
-        risk:'провал = уровень сохраняется, тратится материал + благо'},
-      {n:'HD',                    r:false,h:true, b:false,
-        risk:'провал = откат −1, предмет не теряется'},
-      {n:'Обогащённые или HD (авто)',r:true,h:true,b:false,
-        risk:'лучший материал на каждом шаге без благо'},
-      {n:'Обогащённые/Благо (авто)',r:true,h:false,b:true,
-        risk:'на каждом шаге: обогащённый vs обогащённый+благо'},
+      {n:'Обогащённые',              r:true, h:false,b:false,risk:'провал = уничтожение предмета'},
+      {n:'Обогащённые + Благо',      r:true, h:false,b:true, risk:'провал = уровень сохраняется, тратится материал + благо'},
+      {n:'HD',                       r:false,h:true, b:false,risk:'провал = откат −1, предмет не теряется'},
+      {n:'Обогащённые или HD (авто)',r:true, h:true, b:false,risk:'лучший материал на каждом шаге без благо'},
+      {n:'Обогащённые/Благо (авто)', r:true, h:false,b:true, risk:'на каждом шаге: обогащённый vs обогащённый+благо'},
     ];
     let minEV=Infinity;
     const cmpRows=strats.map(st=>{
@@ -387,7 +339,7 @@
         const ss=computePath(type,finalFrom,to,prices,st.r,st.h,st.b);
         if(ss.length>0) stratEvReach=ss[ss.length-1].evReachNext;
       }
-      const ev=preEV+stratEvReach;
+      const ev=stratEvReach;
       if(ev<minEV)minEV=ev;
       return{n:st.n, ev, risk:st.risk};
     });
@@ -414,8 +366,6 @@
   document.querySelectorAll('.cbg input').forEach(inp=>{
     inp.addEventListener('change',()=>inp.closest('label').classList.toggle('sel',inp.checked));
   });
-  document.getElementById('use-app').addEventListener('change',function(){document.getElementById('f-app').classList.toggle('hidden',!this.checked)});
-  document.getElementById('use-larec').addEventListener('change',function(){document.getElementById('f-larec').classList.toggle('hidden',!this.checked)});
 </script>
 </body>
 </html>
