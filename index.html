@@ -67,7 +67,7 @@
   <header>
     <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:4px">
       <h1>Калькулятор заточки — Ragnarok Online (MOTR)</h1>
-      <span style="font-size:11px;font-weight:600;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 7px;flex-shrink:0">v 0.1.6</span>
+      <span style="font-size:11px;font-weight:600;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 7px;flex-shrink:0">v 0.1.5</span>
     </div>
     <p>Мат. ожидание стоимости заточки. Обычные · Обогащённые · HD · Благо кузнеца</p>
   </header>
@@ -123,8 +123,7 @@
   <div id="results" class="hidden">
     <div class="metrics">
       <div class="metric"><div class="lbl">Мат. ожидание (итого)</div><div class="val g" id="r-total">—</div></div>
-      <div class="metric"><div class="lbl">Ожид. попыток</div><div class="val y" id="r-att">—</div></div>
-      <div class="metric"><div class="lbl">Ожид. предметов</div><div class="val" id="r-items">—</div></div>
+      <div class="metric"><div class="lbl">Ожид. предметов (при уничтожении)</div><div class="val y" id="r-items">—</div></div>
     </div>
 
     <div class="card" style="margin-bottom:14px">
@@ -218,7 +217,12 @@
     evReach[from] = prices.item;
 
     // evHD[k] = стоимость материалов для шага k-1→k через HD (рекурсия по откатам)
+    // Считаем с 0 — иначе при from>4 откат на from даст evHD[from]=0 (бесплатно)
     const evHD = new Array(to+1).fill(0);
+    for(let lvl=0; lvl<from; lvl++){
+      const pn=pN(type,lvl);
+      evHD[lvl+1] = pn===1 ? prices.hd : prices.hd/pn + (1-pn)/pn*evHD[lvl];
+    }
 
     for(let lvl=from; lvl<to; lvl++){
       const pr=pR(type,lvl), pn=pN(type,lvl), target=lvl+1;
@@ -329,12 +333,12 @@
     const finalEvReach = steps.length>0 ? steps[steps.length-1].evReachNext : prices.item;
     const total = finalEvReach;
 
-    const avgAtt=steps.reduce((a,s)=>a+(s.chance<1?1/s.chance:1),0);
-    const avgItems=1+steps.filter(s=>s.fail==='уничтожение').reduce((a,s)=>a+(1-s.chance)/s.chance,0);
+    const avgItems = steps
+      .filter(s => s.fail === 'уничтожение')
+      .reduce((prod, s) => prod / s.chance, 1);
 
     document.getElementById('r-total').textContent=fmt(total);
-    document.getElementById('r-att').textContent=avgAtt.toFixed(1);
-    document.getElementById('r-items').textContent=avgItems.toFixed(2);
+    document.getElementById('r-items').textContent=avgItems.toFixed(1);
 
     const tbody=document.getElementById('t-steps');
     tbody.innerHTML='';
