@@ -110,6 +110,7 @@
       <div class="sl">Доступные материалы</div>
       <div class="cbg">
         <label><input type="checkbox" id="use-rich">Обогащённые — повышенный шанс, провал = уничтожение предмета</label>
+        <label><input type="checkbox" id="use-skill">Умение кузнеца — повышенный шанс, обычный материал, провал = уничтожение (только оружие)</label>
         <label><input type="checkbox" id="use-hd">HD материалы — обычный шанс, провал = откат −1 (не ломает)</label>
         <label><input type="checkbox" id="use-bless">Благо кузнеца — только с обогащёнными: при провале уровень сохраняется (нет уничтожения), тратится при каждой попытке</label>
       </div>
@@ -182,11 +183,19 @@
     w3:   [1,1,1,1,1.00,0.60,0.50,0.20,0.20,0.19],
     w4:   [1,1,1,1,0.60,0.40,0.40,0.20,0.20,0.09],
   };
+  // Умение кузнеца — только оружие, обычный материал, повышенный шанс, провал = уничтожение
+  const SKILL={
+    w1:[1,1,1,1,1.00,1.00,1.00,0.70,0.50,0.29],
+    w2:[1,1,1,1,1.00,1.00,0.70,0.50,0.30,0.29],
+    w3:[1,1,1,1,1.00,0.70,0.60,0.30,0.30,0.29],
+    w4:[1,1,1,1,0.70,0.50,0.50,0.30,0.30,0.19],
+  };
   // кол-во благо для перехода НА уровень (ключ = целевой уровень)
   const BLESS_N={8:1,9:2,10:4};
 
   function pR(t,l){return(RICH[t]||RICH.armor)[l]||0}
   function pN(t,l){return(NORM[t]||NORM.armor)[l]||0}
+  function pS(t,l){return(SKILL[t]||{})[l]||0}
   function bn(tgt){return BLESS_N[tgt]||0}
   function fmt(n){return Math.round(n).toLocaleString('ru-RU')+' Z'}
 
@@ -211,7 +220,7 @@
   //   mc = richCost + blessCount * blessCost  (стоимость одной попытки)
   //   evReach[k+1] = evReach[k] + mc/p   (просто повторяем пока не выйдет)
 
-  function computePath(type, from, to, prices, useRich, useHD, useBless){
+  function computePath(type, from, to, prices, useRich, useSkill, useHD, useBless){
     const steps=[];
     const evReach = new Array(to+1).fill(0);
     evReach[from] = prices.item;
@@ -253,6 +262,17 @@
             matCost:prices.rich,
             evReachNext: evNext
           });
+        }
+      }
+
+      // ── Умение кузнеца — обычный материал, повышенный шанс, только оружие ──
+      if(useSkill && SKILL[type]){
+        const ps=pS(type,lvl);
+        if(ps===1){
+          opts.push({label:'Умение',tag:'t-n',chance:1,fail:'нет',matCost:prices.norm,evReachNext:evReach[lvl]+prices.norm});
+        } else if(ps>0){
+          const evNext=(evReach[lvl]+prices.norm)/ps;
+          opts.push({label:'Умение',tag:'t-n',chance:ps,fail:'уничтожение',matCost:prices.norm,evReachNext:evNext});
         }
       }
 
@@ -324,11 +344,12 @@
       bless:+document.getElementById('p-bless').value||0,
     };
     const useRich =document.getElementById('use-rich').checked;
+    const useSkill=document.getElementById('use-skill').checked;
     const useHD   =document.getElementById('use-hd').checked;
     const useBless=document.getElementById('use-bless').checked;
 
     const finalFrom=Math.min(from,to);
-    const steps=finalFrom<to?computePath(type,finalFrom,to,prices,useRich,useHD,useBless):[];
+    const steps=finalFrom<to?computePath(type,finalFrom,to,prices,useRich,useSkill,useHD,useBless):[];
 
     const finalEvReach = steps.length>0 ? steps[steps.length-1].evReachNext : prices.item;
     const total = finalEvReach;
@@ -352,23 +373,25 @@
     });
 
     const strats=[
-      {n:'Обогащённые',              r:true, h:false,b:false,risk:'провал = уничтожение предмета'},
-      {n:'Обогащённые + Благо',      r:true, h:false,b:true, risk:'провал = уровень сохраняется, тратится материал + благо'},
-      {n:'HD',                       r:false,h:true, b:false,risk:'провал = откат −1, предмет не теряется'},
-      {n:'Обогащённые или HD (авто)',r:true, h:true, b:false,risk:'лучший материал на каждом шаге без благо'},
-      {n:'Обогащённые/Благо (авто)', r:true, h:false,b:true, risk:'на каждом шаге: обогащённый vs обогащённый+благо'},
+      {n:'Обогащённые',              r:true, sk:false,h:false,b:false,risk:'провал = уничтожение предмета'},
+      {n:'Умение кузнеца',           r:false,sk:true, h:false,b:false,risk:'обычный материал, повышенный шанс, провал = уничтожение'},
+      {n:'Обогащённые + Благо',      r:true, sk:false,h:false,b:true, risk:'провал = уровень сохраняется'},
+      {n:'HD',                       r:false,sk:false,h:true, b:false,risk:'провал = откат −1, предмет не теряется'},
+      {n:'Обогащённые или HD (авто)',r:true, sk:false,h:true, b:false,risk:'лучший материал на каждом шаге'},
+      {n:'Умение или HD (авто)',     r:false,sk:true, h:true, b:false,risk:'умение vs HD на каждом шаге'},
     ];
     let minEV=Infinity;
     const cmpRows=strats.map(st=>{
+      if(st.sk && !SKILL[type]) return null; // умение недоступно для брони
       let stratEvReach=prices.item;
       if(finalFrom<to){
-        const ss=computePath(type,finalFrom,to,prices,st.r,st.h,st.b);
+        const ss=computePath(type,finalFrom,to,prices,st.r,st.sk,st.h,st.b);
         if(ss.length>0) stratEvReach=ss[ss.length-1].evReachNext;
       }
       const ev=stratEvReach;
       if(ev<minEV)minEV=ev;
       return{n:st.n, ev, risk:st.risk};
-    });
+    }).filter(Boolean);
     cmpRows.sort((a,b)=>a.ev-b.ev);
     const cbody=document.getElementById('t-cmp');
     cbody.innerHTML='';
@@ -438,11 +461,21 @@
 
   // UI sync
   document.querySelectorAll('.rg input').forEach(inp=>{
-    const sync=()=>document.querySelectorAll('.rg label').forEach(l=>l.classList.toggle('sel',l.querySelector('input').checked));
+    const sync=()=>{
+      document.querySelectorAll('.rg label').forEach(l=>l.classList.toggle('sel',l.querySelector('input').checked));
+      // Блокируем умение кузнеца если выбрана броня
+      const isArmor=document.querySelector('input[name=itype]:checked').value==='armor';
+      const skillCb=document.getElementById('use-skill');
+      const skillLabel=skillCb.closest('label');
+      skillCb.disabled=isArmor;
+      if(isArmor){ skillCb.checked=false; skillLabel.classList.remove('sel'); }
+      skillLabel.style.opacity=isArmor?'0.35':'1';
+      skillLabel.style.cursor=isArmor?'not-allowed':'pointer';
+    };
     inp.addEventListener('change',sync);sync();
   });
   document.querySelectorAll('.cbg input').forEach(inp=>{
-    inp.addEventListener('change',()=>inp.closest('label').classList.toggle('sel',inp.checked));
+    inp.addEventListener('change',()=>{ if(!inp.disabled) inp.closest('label').classList.toggle('sel',inp.checked); });
   });
 </script>
 </body>
